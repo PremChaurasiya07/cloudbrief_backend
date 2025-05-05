@@ -1,0 +1,46 @@
+{
+  "compilerOptions": {
+    // ✅ Keep your current options...
+    "target": "ES2020", // upgrade to match Node.js capabilities
+    "module": "CommonJS", // 👈 Needed for ts-node to run backend files like dev.ts
+    "moduleResolution": "node", // 👈 Use Node-style resolution
+    "outDir": "dist", // optional, useful if you want to compile later
+    "allowJs": true,
+    "noEmit": true, // required by Next.js
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ]
+    },
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
+    "isolatedModules": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ]
+  },
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    "lib/supabase.js",
+    "next-env.d.ts", // ✅ include your dev script
+    "scripts",
+    "src",
+    ".next/types/**/*.ts"
+, "lib/whatsapp-client.js"  ],
+  "exclude": [
+    "node_modules"
+  ]
+}
