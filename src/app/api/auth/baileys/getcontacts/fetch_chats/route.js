@@ -3,8 +3,8 @@ import { supabase } from "../../../../../../../lib/supabase";
 export async function POST(req) {
     // Log the entire request body to check how the sender is being passed
     const { sender } = await req.json();
-    console.log("Request Body:", req.body);  // Log the full body
-    console.log("Sender:", sender);  // Log the sender value
+    // console.log("Request Body:", req.body);  // Log the full body
+    // console.log("Sender:", sender);  // Log the sender value
 
     // If sender is undefined, return an error
     if (!sender) {
@@ -22,7 +22,7 @@ export async function POST(req) {
         .eq('source', 'whatsapp');
 
     // Log the raw data for debugging
-    console.log("Chat Data:", chatData);
+    // console.log("Chat Data:", chatData);
 
     if (count === 0) {
         console.error('No chat found for the specified sender and source');
@@ -54,7 +54,7 @@ export async function POST(req) {
         .select('content, created_at,sender,chat_id')
         .eq('chat_id', chat_id)
         .order('created_at', { ascending: true })
-        .limit(20);
+        
 
     if (messagesError) {
         console.error('Error fetching messages:', messagesError);
