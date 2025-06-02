@@ -51,7 +51,7 @@ export async function POST(req) {
     // Fetch the last 5 messages based on chat_id
     const { data: messages, error: messagesError } = await supabase
         .from('memory_entries')
-        .select('content, created_at,sender,chat_id')
+        .select('content, created_at,sender,chat_id,metadata')
         .eq('chat_id', chat_id)
         .order('created_at', { ascending: true })
         
