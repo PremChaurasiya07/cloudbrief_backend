@@ -1,7 +1,14 @@
-import type { NextConfig } from "next";
+// In your backend Next.js project's next.config.js
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  // ... other existing configurations
 
-const nextConfig: NextConfig = {
-  /* config options here */
+  webpack: (config, { isServer }) => {
+    if (isServer) {
+      config.externals.push('ws');
+    }
+    return config;
+  },
 };
 
-export default nextConfig;
+module.exports = nextConfig;

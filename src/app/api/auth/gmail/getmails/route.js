@@ -5,7 +5,7 @@ export async function POST(req) {
     try {
         const { data: mails, error } = await supabase
             .from('memory_entries')
-            .select('id,sender, content, created_at, metadata')
+            .select('id,sender, content, created_at, metadata,chat_id,starred')
             .eq('user_id', user_id)
             .eq('receiver', gmail_id)
             .eq('type', 'email');
@@ -28,8 +28,10 @@ export async function POST(req) {
                 sender: mail.sender,
                 content: mail.content,
                 created_at: mail.created_at,
+                chat_id: mail.chat_id,
                 subject: metadata.subject || "No Subject", // Extract subject from metadata
                 status: metadata.status || "Unknown", // Extract status from metadata
+                starred:mail.starred
             };
         });
 

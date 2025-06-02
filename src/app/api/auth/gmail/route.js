@@ -17,20 +17,22 @@ export async function GET() {
   }
 
   const authUrl = oauth2Client.generateAuthUrl({
-    access_type: "offline", // Needed for refresh tokens
-    prompt: "consent",      // Always show consent (for updated scopes)
-    scope: [
-      "openid",
-      "https://www.googleapis.com/auth/userinfo.email",
-      "https://www.googleapis.com/auth/userinfo.profile",
-      "https://www.googleapis.com/auth/gmail.readonly",
-      "https://www.googleapis.com/auth/gmail.modify",
-      "https://www.googleapis.com/auth/calendar.readonly", // 👈 Calendar read
-      "https://www.googleapis.com/auth/calendar.events"     // 👈 Calendar create/edit
-    ],
-    include_granted_scopes: true,  // Allow incremental auth
-    response_type: "code",
-  });
+  access_type: "offline",
+  prompt: "consent",
+  scope: [
+  'https://www.googleapis.com/auth/gmail.readonly',
+  'https://www.googleapis.com/auth/gmail.modify',
+  'https://www.googleapis.com/auth/gmail.send',
+  'https://www.googleapis.com/auth/gmail.labels',
+  'https://www.googleapis.com/auth/userinfo.email',
+  'https://www.googleapis.com/auth/userinfo.profile',
+  'https://www.googleapis.com/',
+  'openid'
+  ],
+  include_granted_scopes: true,
+  response_type: "code",
+});
+
 
   return new Response(null, {
     status: 302,

@@ -1,775 +1,408 @@
-// // import { google } from "googleapis";
-// // import { supabase } from "../../../../../../lib/supabase.js"; // .js extension
-// // import { Buffer } from "buffer";
-// // import embed from "../../embedding.js";
-
-// // // Decode base64 encoded message body
-// // function decodeBase64(data) {
-// //   const normalized = data.replace(/-/g, "+").replace(/_/g, "/");
-// //   return Buffer.from(normalized, "base64").toString("utf-8");
-// // }
-
-// // // Extract the message from Gmail's payload
-// // function extractMessage(payload) {
-// //   if (payload?.body?.data) {
-// //     return decodeBase64(payload.body.data);
-// //   }
-
-// //   if (payload?.parts?.length) {
-// //     const textPart = payload.parts.find(
-// //       (p) => p.mimeType === "text/plain" && p.body?.data
-// //     );
-// //     if (textPart?.body?.data) return decodeBase64(textPart.body.data);
-
-// //     const htmlPart = payload.parts.find(
-// //       (p) => p.mimeType === "text/html" && p.body?.data
-// //     );
-// //     if (htmlPart?.body?.data) {
-// //       const rawHtml = decodeBase64(htmlPart.body.data);
-// //       return rawHtml.replace(/<[^>]+>/g, " "); // Remove HTML tags
-// //     }
-// //   }
-
-// //   return "";
-// // }
-
-// // export async function POST(req) {
-// //   try {
-// //     const { accessToken, user_id } = await req.json(); // only accessToken and user_id
-
-// //     const auth = new google.auth.OAuth2();
-// //     auth.setCredentials({ access_token: accessToken });
-
-// //     const gmail = google.gmail({ version: "v1", auth });
-
-// //     // Fetch unread Gmail messages
-// //     const res = await gmail.users.messages.list({ userId: "me", q: "is:unread", maxResults: 20 });
-// //     const messages = res.data.messages || [];
-
-// //     const entriesToInsert = [];
-
-// //     for (const msg of messages) {
-// //       const messageId = msg.id;
-
-// //       // Check if message already exists in Supabase by chat_id
-// //       const { data: existing } = await supabase
-// //         .from("memory_entries")
-// //         .select("id")
-// //         .eq("chat_id", messageId) // Checking with chat_id (Gmail message ID)
-// //         .maybeSingle();
-
-// //       if (existing) {
-// //         console.log(`✅ Skipping duplicate message ${messageId}`);
-// //         continue; // Skip duplicate
-// //       }
-
-// //       const detail = await gmail.users.messages.get({ userId: "me", id: messageId, format: "full" });
-// //       const payload = detail.data.payload;
-// //       const receiver= detail.data.payload?.headers?.find((h) => h.name === "To")?.value || "";
-// //       const subject = detail.data.payload?.headers?.find((h) => h.name === "Subject")?.value || "";
-// //       const from = detail.data.payload?.headers?.find((h) => h.name === "From")?.value || "";
-// //       const decoded = extractMessage(payload).trim();
-
-// //       if (decoded) {
-// //         const status = detail.data.labelIds.includes("UNREAD") ? "unread" : "read";
-
-// //         entriesToInsert.push({
-// //           user_id,
-// //           content: decoded,
-// //           type: "email",
-// //           source: "gmail",
-// //           chat_id: messageId,
-// //           sender: from,
-// //           receiver: receiver,
-// //           metadata: {
-// //             sender: from,
-// //             created_at: new Date().toISOString(),
-// //             type: "email",
-// //             source: "gmail",
-// //             subject: subject,
-// //             status: status,
-// //           },
-// //         });
-// //       }
-// //     }
-
-// //     // Batch insert all new entries at once
-// //     if (entriesToInsert.length > 0) {
-// //       const { error } = await supabase.from("memory_entries").upsert(entriesToInsert);
-// //       if (error) {
-// //         console.error("Error inserting messages:", error.message);
-// //       }
-// //     }
-
-// //     await embed(); // Perform embedding or post-processing after insertion
-
-// //     return new Response(
-// //       JSON.stringify({
-// //         inserted: entriesToInsert.length,
-// //         totalFetched: messages.length,
-// //       }),
-// //       {
-// //         status: 200,
-// //         headers: { "Content-Type": "application/json" },
-// //       }
-// //     );
-// //   } catch (error) {
-// //     console.error("Error in POST handler:", error);
-// //     return new Response(
-// //       JSON.stringify({
-// //         error: "Internal server error",
-// //         details: error.message,
-// //       }),
-// //       {
-// //         status: 500,
-// //         headers: { "Content-Type": "application/json" },
-// //       }
-// //     );
-// //   }
-// // }
-
-
-// import { google } from "googleapis";
-// import { supabase } from "../../../../../../lib/supabase.js"; // .js extension
-// import { Buffer } from "buffer";
-// import embed from "../../embedding.js"; // Import the embedding function
-
-// function decodeBase64(data) {
-//   const normalized = data.replace(/-/g, "+").replace(/_/g, "/");
-//   return Buffer.from(normalized, "base64").toString("utf-8");
-// }
-
-// function extractMessage(payload) {
-//   if (payload?.body?.data) {
-//     return decodeBase64(payload.body.data);
-//   }
-
-//   if (payload?.parts?.length) {
-//     const textPart = payload.parts.find(
-//       (p) => p.mimeType === "text/plain" && p.body?.data
-//     );
-//     if (textPart?.body?.data) return decodeBase64(textPart.body.data);
-
-//     const htmlPart = payload.parts.find(
-//       (p) => p.mimeType === "text/html" && p.body?.data
-//     );
-//     if (htmlPart?.body?.data) {
-//       const rawHtml = decodeBase64(htmlPart.body.data);
-//       return rawHtml.replace(/<[^>]+>/g, " ");
-//     }
-//   }
-
-//   return "";
-// }
-
-// export async function POST(req) {
-//   try {
-//     const { accessToken, user_id } = await req.json();
-
-//     const auth = new google.auth.OAuth2();
-//     auth.setCredentials({
-//       access_token: accessToken,
-//       expiry_date: Date.now() + 3600 * 24 * 30 * 1000, // ⚡ Extend expiry: 30 days
-//     });
-
-//     const gmail = google.gmail({ version: "v1", auth });
-
-//     let res;
-//     try {
-//       res = await gmail.users.messages.list({
-//         userId: "me",
-//         q: "is:unread",
-//         maxResults: 20,
-//       });
-//     } catch (gmailError) {
-//       if (gmailError?.response?.status === 401) {
-//         console.error("🔴 Access token expired or invalid!");
-
-//         return new Response(
-//           JSON.stringify({
-//             error: "AccessTokenExpired",
-//             message: "Your Gmail access token has expired. Please reconnect your account.",
-//           }),
-//           {
-//             status: 401,
-//             headers: {
-//               "Content-Type": "application/json",
-//             },
-//           }
-//         );
-//       } else {
-//         throw gmailError; // Other errors will be caught below
-//       }
-//     }
-
-//     const messages = res.data.messages || [];
-//     let insertedCount = 0;
-
-//     for (const msg of messages) {
-//       const messageId = msg.id; // Gmail's unique ID
-
-//       // 🛡️ Check if message with same messageId already exists based on chat_id
-//       const { data: existing, error: fetchError } = await supabase
-//         .from("memory_entries")
-//         .select("id")
-//         .eq("chat_id", messageId) // Now using chat_id
-//         .maybeSingle();
-
-//       if (existing) {
-//         console.log(`✅ Skipping duplicate message ${messageId}`);
-//         continue; // Skip duplicate
-//       }
-
-//       if (fetchError) {
-//         console.error("Supabase fetch error:", fetchError.message);
-//         continue;
-//       }
-
-//       const detail = await gmail.users.messages.get({
-//         userId: "me",
-//         id: messageId,
-//         format: "full",
-//       });
-
-//       const payload = detail.data.payload;
-//       const headers = detail.data.payload?.headers || [];
-//       const receiver= detail.data.payload?.headers?.find((h) => h.name === "To")?.value || "";
-//       const subject = headers.find((h) => h.name === "Subject")?.value || "";
-//       const from = headers.find((h) => h.name === "From")?.value || "";
-
-//       const decoded = extractMessage(payload).trim();
-//       if (decoded) {
-//         const labels = detail.data.labelIds || [];
-//         const isUnread = labels.includes("UNREAD"); // Check if "UNREAD" label exists
-//         const status = isUnread ? "unread" : "read"; // Determine message status
-
-//         const { error } = await supabase.from("memory_entries").insert({
-//           user_id,
-//           content: decoded,
-//           type: "email",
-//           source: "gmail",
-//           chat_id: messageId, // 🌟 Save Gmail message ID into chat_id
-//           sender: from,
-//           receiver: receiver,
-//           metadata: {
-//             id: messageId,
-//             sender: from,
-//             created_at: new Date().toISOString(),
-//             type: "email",
-//             source: "gmail",
-//             subject: subject,
-//             status: status, // Include status (read/unread)
-//           },
-//         });
-
-//         if (!error) {
-//           insertedCount++;
-//         } else {
-//           console.error("Supabase insert error:", error.message);
-//         }
-//       } else {
-//         console.warn(`⚠️ No body found for message: ${messageId}`);
-//       }
-//     }
-
-//     await embed(); // embed everything after inserting
-
-//     return new Response(
-//       JSON.stringify({
-//         inserted: insertedCount,
-//         totalFetched: messages.length,
-//       }),
-//       {
-//         status: 200,
-//         headers: {
-//           "Content-Type": "application/json",
-//         },
-//       }
-//     );
-//   } catch (error) {
-//     console.error("Error in POST handler:", error);
-//     return new Response(
-//       JSON.stringify({
-//         error: "Internal server error",
-//         details: error.message,
-//       }),
-//       {
-//         status: 500,
-//         headers: {
-//           "Content-Type": "application/json",
-//         },
-//       }
-//     );
-//   }
-// }
-
-
-// import { google } from "googleapis";
-// import { supabase } from "../../../../../../lib/supabase.js"; // .js extension
-// import { Buffer } from "buffer";
-// import { htmlToText } from "html-to-text"; // Import html-to-text for better formatting
-// import embed from "../../embedding.js"; // Import the embedding function
-
-// // Decode base64 encoded message body
-// function decodeBase64(data) {
-//   const normalized = data.replace(/-/g, "+").replace(/_/g, "/");
-//   return Buffer.from(normalized, "base64").toString("utf-8");
-// }
-
-// // Extract the message from Gmail's payload and convert HTML to text
-// function extractMessage(payload) {
-//   if (payload?.body?.data) {
-//     return decodeBase64(payload.body.data); // For simple text content
-//   }
-
-//   if (payload?.parts?.length) {
-//     // Look for a plain text part first
-//     const textPart = payload.parts.find(
-//       (p) => p.mimeType === "text/plain" && p.body?.data
-//     );
-//     if (textPart?.body?.data) return decodeBase64(textPart.body.data);
-
-//     // If no plain text, look for HTML part
-//     const htmlPart = payload.parts.find(
-//       (p) => p.mimeType === "text/html" && p.body?.data
-//     );
-//     if (htmlPart?.body?.data) {
-//       const rawHtml = decodeBase64(htmlPart.body.data);
-//       // Convert HTML to clean readable text using html-to-text
-//       return htmlToText(rawHtml, {
-//         wordwrap: 130, // Prevent word wrapping issues
-//         selectors: [
-//           { selector: 'a', options: { hideLinkHrefIfSameAsText: true } }, // Clean up links
-//         ],
-//       });
-//     }
-//   }
-
-//   return ""; // Return empty string if no message content found
-// }
-
-// // Main POST function to fetch Gmail messages and insert into Supabase
-// export async function POST(req) {
-//   try {
-//     const { accessToken, user_id } = await req.json(); // Extract access token and user ID
-
-//     const auth = new google.auth.OAuth2();
-//     auth.setCredentials({
-//       access_token: accessToken,
-//       expiry_date: Date.now() + 3600 * 24 * 30 * 1000, // ⚡ Extend expiry: 30 days
-//     });
-
-//     const gmail = google.gmail({ version: "v1", auth });
-
-//     let res;
-//     try {
-//       res = await gmail.users.messages.list({
-//         userId: "me",
-//         q: "is:unread", // Fetch only unread messages
-//         maxResults: 20, // Limit to 20 unread messages
-//       });
-//     } catch (gmailError) {
-//       if (gmailError?.response?.status === 401) {
-//         console.error("🔴 Access token expired or invalid!");
-
-//         return new Response(
-//           JSON.stringify({
-//             error: "AccessTokenExpired",
-//             message: "Your Gmail access token has expired. Please reconnect your account.",
-//           }),
-//           {
-//             status: 401,
-//             headers: {
-//               "Content-Type": "application/json",
-//             },
-//           }
-//         );
-//       } else {
-//         throw gmailError; // Other errors will be caught below
-//       }
-//     }
-
-//     const messages = res.data.messages || [];
-//     const messageIds = messages.map(msg => msg.id);
-
-//     // Fetch all existing message IDs at once (to reduce queries)
-//     const { data: existingMessages, error: fetchError } = await supabase
-//       .from("memory_entries")
-//       .select("chat_id")
-//       .in("chat_id", messageIds); // Batch query for all existing messages by their chat_id
-
-//     if (fetchError) {
-//       console.error("Supabase fetch error:", fetchError.message);
-//       return new Response(
-//         JSON.stringify({
-//           error: "Internal server error",
-//           details: fetchError.message,
-//         }),
-//         {
-//           status: 500,
-//           headers: {
-//             "Content-Type": "application/json",
-//           },
-//         }
-//       );
-//     }
-
-//     // Extract existing message IDs from the response
-//     const existingMessageIds = existingMessages.map((entry) => entry.chat_id);
-//     const messagesToInsert = [];
-
-//     for (const msg of messages) {
-//       const messageId = msg.id; // Gmail's unique ID
-
-//       if (existingMessageIds.includes(messageId)) {
-//         console.log(`✅ Skipping duplicate message ${messageId}`);
-//         continue; // Skip duplicate
-//       }
-
-//       const detail = await gmail.users.messages.get({
-//         userId: "me",
-//         id: messageId,
-//         format: "full",
-//       });
-
-//       const payload = detail.data.payload;
-//       const headers = detail.data.payload?.headers || [];
-
-//       // Safely get the header fields
-//       const getHeader = (name) => {
-//         const header = headers.find((h) => h.name === name);
-//         return header ? header.value : '';
-//       };
-
-//       const receiver = getHeader("To");
-//       const subject = getHeader("Subject");
-//       const from = getHeader("From");
-
-//       const decoded = extractMessage(payload).trim(); // Cleaned-up message
-//       if (decoded) {
-//         const labels = detail.data.labelIds || [];
-//         const isUnread = labels.includes("UNREAD"); // Check if "UNREAD" label exists
-//         const status = isUnread ? "unread" : "read"; // Determine message status
-
-//         // Prepare the message for batch insert
-//         messagesToInsert.push({
-//           user_id,
-//           content: decoded, // Cleaned content
-//           type: "email",
-//           source: "gmail",
-//           chat_id: messageId, // 🌟 Save Gmail message ID into chat_id
-//           sender: from,
-//           receiver: receiver,
-//           metadata: {
-//             id: messageId,
-//             sender: from,
-//             created_at: new Date().toISOString(),
-//             type: "email",
-//             source: "gmail",
-//             subject: subject,
-//             status: status, // Include status (read/unread)
-//           },
-//         });
-//       } else {
-//         console.warn(`⚠️ No body found for message: ${messageId}`);
-//       }
-//     }
-
-//     // Perform a single batch insert
-//     if (messagesToInsert.length > 0) {
-//       const { error } = await supabase.from("memory_entries").insert(messagesToInsert);
-
-//       if (error) {
-//         console.error("Supabase batch insert error:", error.message);
-//         return new Response(
-//           JSON.stringify({
-//             error: "Internal server error",
-//             details: error.message,
-//           }),
-//           {
-//             status: 500,
-//             headers: {
-//               "Content-Type": "application/json",
-//             },
-//           }
-//         );
-//       }
-//     }
-
-//     await embed(); // Embed everything after inserting into memory entries
-
-//     return new Response(
-//       JSON.stringify({
-//         inserted: messagesToInsert.length,
-//         totalFetched: messages.length,
-//       }),
-//       {
-//         status: 200,
-//         headers: {
-//           "Content-Type": "application/json",
-//         },
-//       }
-//     );
-//   } catch (error) {
-//     console.error("Error in POST handler:", error);
-//     return new Response(
-//       JSON.stringify({
-//         error: "Internal server error",
-//         details: error.message,
-//       }),
-//       {
-//         status: 500,
-//         headers: {
-//           "Content-Type": "application/json",
-//         },
-//       }
-//     );
-//   }
-// }
-
-
-
-
+// src/app/api/gmail/fetch-emails/route.js
 
 import { google } from "googleapis";
-import { supabase } from "../../../../../../lib/supabase.js"; // .js extension
+import { supabase } from "../../../../../../lib/supabase.js";
 import { Buffer } from "buffer";
-import { htmlToText } from "html-to-text"; // Import html-to-text for better formatting
-import embed from "../../embedding.js"; // Import the embedding function
+import { htmlToText } from "html-to-text";
+import embed from "../../embedding.js";
 
-// Decode base64 encoded message body
+// Decode base64 encoded message body from Gmail API
 function decodeBase64(data) {
-  const normalized = data.replace(/-/g, "+").replace(/_/g, "/");
-  return Buffer.from(normalized, "base64").toString("utf-8");
+  try {
+    const normalized = data.replace(/-/g, "+").replace(/_/g, "/");
+    return Buffer.from(normalized, "base64").toString("utf-8");
+  } catch (error) {
+    console.error("Error decoding base64:", error);
+    return "";
+  }
 }
 
-// Clean up message content by stripping unwanted characters and excessive line breaks
+// Advanced text cleaning function
 function cleanText(content) {
-  // Replace multiple spaces with a single space
+  if (!content || typeof content !== 'string') return "";
+  
+  // Remove zero-width characters and other invisible Unicode characters
+  content = content.replace(/[\u200B-\u200D\uFEFF\u00A0\u2028\u2029]/g, "");
+  
+  // Remove HTML entities that might remain
+  content = content.replace(/&[#\w]+;/g, " ");
+  
+  // Replace multiple whitespace characters with single space
+  content = content.replace(/[\s\t\r\n]+/g, " ");
+  
+  // Remove any remaining HTML/XML tags aggressively
+  content = content.replace(/<[^>]*>/g, " ");
+  
+  // Remove email tracking pixels and hidden content
+  content = content.replace(/\[.*?\]/g, " ");
+  
+  // Remove URLs that are not meaningful
+  content = content.replace(/https?:\/\/[^\s]+/g, "[URL]");
+  
+  // Remove email addresses from content (keep meaningful text)
+  content = content.replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g, "[EMAIL]");
+  
+  // Remove excessive punctuation
+  content = content.replace(/[.,;:!?]{2,}/g, ".");
+  
+  // Clean up remaining special characters but keep basic punctuation
+  content = content.replace(/[^\w\s.,;:!?'"()-]/g, " ");
+  
+  // Final cleanup - normalize spaces and trim
   content = content.replace(/\s+/g, " ").trim();
-
-  // Remove unwanted characters like extra newlines, etc.
-  content = content.replace(/[\r\n]+/g, "\n");
-
-  // Optionally, remove any HTML tags if they remain after html-to-text conversion
-  content = content.replace(/<\/?[^>]+(>|$)/g, "");
-
-  // Clean up any remaining non-printable characters
-  content = content.replace(/[^\x20-\x7E]/g, "");
-
+  
   return content;
 }
 
-// Extract the message from Gmail's payload and convert HTML to text
+// Enhanced message extraction with better handling
 function extractMessage(payload) {
-  if (payload?.body?.data) {
-    return decodeBase64(payload.body.data); // For simple text content
-  }
-
-  if (payload?.parts?.length) {
-    // Look for a plain text part first
-    const textPart = payload.parts.find(
-      (p) => p.mimeType === "text/plain" && p.body?.data
-    );
-    if (textPart?.body?.data) return decodeBase64(textPart.body.data);
-
-    // If no plain text, look for HTML part
-    const htmlPart = payload.parts.find(
-      (p) => p.mimeType === "text/html" && p.body?.data
-    );
-    if (htmlPart?.body?.data) {
-      const rawHtml = decodeBase64(htmlPart.body.data);
-      // Convert HTML to clean readable text using html-to-text
-      let rawText = htmlToText(rawHtml, {
-        wordwrap: 130, // Prevent word wrapping issues
-        selectors: [
-          { selector: 'a', options: { hideLinkHrefIfSameAsText: true } }, // Clean up links
-        ],
-      });
-
-      // Further clean the text content after converting from HTML
-      return cleanText(rawText);
+  let extractedContent = "";
+  
+  try {
+    // Direct body data (simple messages)
+    if (payload?.body?.data) {
+      extractedContent = decodeBase64(payload.body.data);
+      return cleanText(extractedContent);
     }
+
+    // Multi-part messages
+    if (payload?.parts?.length) {
+      // Priority 1: Look for text/plain
+      const textPart = payload.parts.find(
+        (part) => part.mimeType === "text/plain" && part.body?.data
+      );
+      
+      if (textPart?.body?.data) {
+        extractedContent = decodeBase64(textPart.body.data);
+        return cleanText(extractedContent);
+      }
+
+      // Priority 2: Look for text/html and convert
+      const htmlPart = payload.parts.find(
+        (part) => part.mimeType === "text/html" && part.body?.data
+      );
+      
+      if (htmlPart?.body?.data) {
+        const rawHtml = decodeBase64(htmlPart.body.data);
+        
+        // Enhanced HTML to text conversion
+        extractedContent = htmlToText(rawHtml, {
+          wordwrap: false, // Don't wrap lines
+          selectors: [
+            // Skip common email elements
+            { selector: 'style', format: 'skip' },
+            { selector: 'script', format: 'skip' },
+            { selector: 'noscript', format: 'skip' },
+            { selector: 'head', format: 'skip' },
+            { selector: '.email-signature', format: 'skip' },
+            { selector: '.footer', format: 'skip' },
+            { selector: '[style*="display:none"]', format: 'skip' },
+            { selector: '[style*="visibility:hidden"]', format: 'skip' },
+            
+            // Handle links better
+            { selector: 'a', options: { 
+              ignoreHref: true, 
+              hideLinkHrefIfSameAsText: true 
+            }},
+            
+            // Skip images but keep alt text
+            { selector: 'img', format: 'skip' },
+            
+            // Format tables as text
+            { selector: 'table', format: 'dataTable' },
+            
+            // Add line breaks for block elements
+            { selector: 'div', options: { leadingLineBreaks: 1, trailingLineBreaks: 1 }},
+            { selector: 'p', options: { leadingLineBreaks: 1, trailingLineBreaks: 1 }},
+            { selector: 'br', format: 'lineBreak' }
+          ],
+          
+          // General options
+          preserveNewlines: false,
+          uppercaseHeadings: false,
+          hideLinkHrefIfSameAsText: true,
+          ignoreHref: true,
+          ignoreImage: true,
+          
+          // Limits
+          limits: {
+            maxInputLength: 1000000,
+            ellipsis: '...'
+          }
+        });
+        
+        return cleanText(extractedContent);
+      }
+
+      // Priority 3: Try to extract from nested parts (multipart/alternative, etc.)
+      for (const part of payload.parts) {
+        if (part.parts?.length) {
+          const nestedContent = extractMessage(part);
+          if (nestedContent.trim()) {
+            return nestedContent;
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error("Error extracting message content:", error);
   }
 
-  return ""; // Return empty string if no message content found
+  return "";
 }
 
-// Main POST function to fetch Gmail messages and insert into Supabase
+// Create a unique hash for email content to prevent duplicates
+function createEmailHash(messageId, from, subject, content) {
+  const crypto = require('crypto');
+  const uniqueString = `${messageId}-${from}-${subject}-${content.substring(0, 100)}`;
+  return crypto.createHash('sha256').update(uniqueString).digest('hex');
+}
+
+// Enhanced duplicate checking
+async function checkForDuplicates(messageIds, userFilter) {
+  try {
+    const { data: existingEntries, error } = await supabase
+      .from("memory_entries")
+      .select("chat_id, metadata")
+      .in("chat_id", messageIds)
+      .eq("user_id", userFilter.user_id)
+      .eq("source", "gmail")
+      .eq("type", "email");
+
+    if (error) {
+      console.error("Error checking duplicates:", error);
+      return [];
+    }
+
+    return existingEntries.map(entry => entry.chat_id);
+  } catch (error) {
+    console.error("Error in duplicate check:", error);
+    return [];
+  }
+}
+
+// Main POST function
 export async function POST(req) {
   try {
-    const { accessToken, user_id } = await req.json(); // Extract access token and user ID
+    const { accessToken, user_id } = await req.json();
 
+    // Validation
+    if (!accessToken || !user_id) {
+      return new Response(
+        JSON.stringify({
+          error: "Missing required parameters",
+          message: "accessToken and user_id are required"
+        }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    // Setup Gmail API
     const auth = new google.auth.OAuth2();
     auth.setCredentials({
       access_token: accessToken,
-      expiry_date: Date.now() + 3600 * 24 * 30 * 1000, // ⚡ Extend expiry: 30 days
+      expiry_date: Date.now() + 3600 * 1000 * 24 * 30, // 30 days
     });
 
     const gmail = google.gmail({ version: "v1", auth });
 
-    let res;
+    // Fetch messages with error handling
+    let messagesResponse;
     try {
-      res = await gmail.users.messages.list({
+      messagesResponse = await gmail.users.messages.list({
         userId: "me",
-        q: "is:unread", // Fetch only unread messages
-        maxResults: 20, // Limit to 20 unread messages
+        q: "is:unread",
+        maxResults: 50, // Increased to get more emails
       });
     } catch (gmailError) {
       if (gmailError?.response?.status === 401) {
-        console.error("🔴 Access token expired or invalid!");
-
         return new Response(
           JSON.stringify({
             error: "AccessTokenExpired",
-            message: "Your Gmail access token has expired. Please reconnect your account.",
+            message: "Gmail access token has expired. Please reconnect."
           }),
-          {
-            status: 401,
-            headers: {
-              "Content-Type": "application/json",
-            },
-          }
+          { status: 401, headers: { "Content-Type": "application/json" } }
         );
-      } else {
-        throw gmailError; // Other errors will be caught below
       }
+      throw gmailError;
     }
 
-    const messages = res.data.messages || [];
-    const messageIds = messages.map(msg => msg.id);
-
-    // Fetch all existing message IDs at once (to reduce queries)
-    const { data: existingMessages, error: fetchError } = await supabase
-      .from("memory_entries")
-      .select("chat_id")
-      .in("chat_id", messageIds); // Batch query for all existing messages by their chat_id
-
-    if (fetchError) {
-      console.error("Supabase fetch error:", fetchError.message);
+    const messages = messagesResponse.data.messages || [];
+    if (messages.length === 0) {
       return new Response(
         JSON.stringify({
-          error: "Internal server error",
-          details: fetchError.message,
+          message: "No unread messages found",
+          inserted: 0,
+          totalFetched: 0
         }),
-        {
-          status: 500,
-          headers: {
-            "Content-Type": "application/json",
-          },
-        }
+        { status: 200, headers: { "Content-Type": "application/json" } }
       );
     }
 
-    // Extract existing message IDs from the response
-    const existingMessageIds = existingMessages.map((entry) => entry.chat_id);
+    const messageIds = messages.map(msg => msg.id);
+    
+    // Enhanced duplicate checking
+    const existingMessageIds = await checkForDuplicates(messageIds, { user_id });
+    
+    console.log(`Found ${existingMessageIds.length} existing messages out of ${messageIds.length} fetched`);
+
     const messagesToInsert = [];
+    const processedHashes = new Set(); // Additional hash-based duplicate prevention
 
+    // Process each message
     for (const msg of messages) {
-      const messageId = msg.id; // Gmail's unique ID
+      const messageId = msg.id;
 
+      // Skip if already exists in database
       if (existingMessageIds.includes(messageId)) {
-        console.log(`✅ Skipping duplicate message ${messageId}`);
-        continue; // Skip duplicate
+        console.log(`Skipping existing message: ${messageId}`);
+        continue;
       }
 
-      const detail = await gmail.users.messages.get({
-        userId: "me",
-        id: messageId,
-        format: "full",
-      });
+      try {
+        // Get full message details
+        const messageDetail = await gmail.users.messages.get({
+          userId: "me",
+          id: messageId,
+          format: "full",
+        });
 
-      const payload = detail.data.payload;
-      const headers = detail.data.payload?.headers || [];
+        const payload = messageDetail.data.payload;
+        const headers = payload?.headers || [];
 
-      // Safely get the header fields
-      const getHeader = (name) => {
-        const header = headers.find((h) => h.name === name);
-        return header ? header.value : '';
-      };
+        // Extract header information safely
+        const getHeader = (name) => {
+          const header = headers.find(h => h.name?.toLowerCase() === name.toLowerCase());
+          return header?.value || '';
+        };
 
-      const receiver = getHeader("To");
-      const subject = getHeader("Subject");
-      const from = getHeader("From");
+        const from = getHeader("From");
+        const to = getHeader("To");
+        const subject = getHeader("Subject");
+        const date = getHeader("Date");
+        const messageIdHeader = getHeader("Message-ID");
 
-      const decoded = extractMessage(payload).trim(); // Cleaned-up message
-      if (decoded) {
-        const labels = detail.data.labelIds || [];
-        const isUnread = labels.includes("UNREAD"); // Check if "UNREAD" label exists
-        const status = isUnread ? "unread" : "read"; // Determine message status
+        // Extract and clean content
+        const cleanedContent = extractMessage(payload);
+        
+        if (!cleanedContent || cleanedContent.length < 10) {
+          console.warn(`Skipping message with insufficient content: ${messageId}`);
+          continue;
+        }
 
-        // Prepare the message for batch insert
-        messagesToInsert.push({
+        // Create hash for additional duplicate prevention
+        const contentHash = createEmailHash(messageId, from, subject, cleanedContent);
+        if (processedHashes.has(contentHash)) {
+          console.log(`Skipping duplicate content hash: ${messageId}`);
+          continue;
+        }
+        processedHashes.add(contentHash);
+
+        // Determine read status
+        const labels = messageDetail.data.labelIds || [];
+        const isUnread = labels.includes("UNREAD");
+        const status = isUnread ? "unread" : "read";
+
+        // Parse date safely
+        let parsedDate;
+        try {
+          parsedDate = date ? new Date(date).toISOString() : new Date().toISOString();
+        } catch (dateError) {
+          console.warn(`Invalid date format for message ${messageId}: ${date}`);
+          parsedDate = new Date().toISOString();
+        }
+
+        // Prepare message for insertion
+        const messageEntry = {
           user_id,
-          content: decoded, // Cleaned content
+          content: cleanedContent,
           type: "email",
           source: "gmail",
-          chat_id: messageId, // 🌟 Save Gmail message ID into chat_id
+          chat_id: messageId,
           sender: from,
-          receiver: receiver,
+          receiver: to,
           metadata: {
             id: messageId,
+            message_id_header: messageIdHeader,
             sender: from,
-            created_at: new Date().toISOString(),
+            receiver: to,
+            subject: subject,
+            status: status,
+            created_at: parsedDate,
             type: "email",
             source: "gmail",
-            subject: subject,
-            status: status, // Include status (read/unread)
+            thread_id: messageDetail.data.threadId,
+            label_ids: labels,
+            content_hash: contentHash
           },
-        });
-      } else {
-        console.warn(`⚠️ No body found for message: ${messageId}`);
+        };
+
+        messagesToInsert.push(messageEntry);
+
+      } catch (messageError) {
+        console.error(`Error processing message ${messageId}:`, messageError);
+        continue; // Skip this message and continue with others
       }
     }
 
-    // Perform a single batch insert
+    // Batch insert with final duplicate check
+    let insertedCount = 0;
     if (messagesToInsert.length > 0) {
-      const { error } = await supabase.from("memory_entries").insert(messagesToInsert);
+      console.log(`Attempting to insert ${messagesToInsert.length} new messages`);
+      
+      // Final duplicate check before insertion (using upsert to handle race conditions)
+      const { data: insertedData, error: insertError } = await supabase
+        .from("memory_entries")
+        .upsert(messagesToInsert, { 
+          onConflict: 'user_id,chat_id',
+          ignoreDuplicates: true 
+        })
+        .select('id');
 
-      if (error) {
-        console.error("Supabase batch insert error:", error.message);
+      if (insertError) {
+        console.error("Database insertion error:", insertError);
         return new Response(
           JSON.stringify({
-            error: "Internal server error",
-            details: error.message,
+            error: "Failed to insert messages",
+            details: insertError.message
           }),
-          {
-            status: 500,
-            headers: {
-              "Content-Type": "application/json",
-            },
-          }
+          { status: 500, headers: { "Content-Type": "application/json" } }
         );
       }
+
+      insertedCount = insertedData?.length || 0;
+      console.log(`Successfully inserted ${insertedCount} new messages`);
     }
 
-    await embed(); // Embed everything after inserting into memory entries
+    // Trigger embedding process
+    try {
+      await embed();
+      console.log("Embedding process completed");
+    } catch (embedError) {
+      console.error("Error in embedding process:", embedError);
+      // Don't fail the entire request if embedding fails
+    }
 
     return new Response(
       JSON.stringify({
-        inserted: messagesToInsert.length,
+        success: true,
+        inserted: insertedCount,
         totalFetched: messages.length,
+        duplicatesSkipped: messages.length - messagesToInsert.length,
+        message: `Successfully processed ${messages.length} emails, inserted ${insertedCount} new ones`
       }),
-      {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json",
-        },
-      }
+      { status: 200, headers: { "Content-Type": "application/json" } }
     );
+
   } catch (error) {
-    console.error("Error in POST handler:", error);
+    console.error("Unhandled error in Gmail fetch:", error);
     return new Response(
       JSON.stringify({
         error: "Internal server error",
-        details: error.message,
+        message: error.message,
+        details: process.env.NODE_ENV === 'development' ? error.stack : undefined
       }),
-      {
-        status: 500,
-        headers: {
-          "Content-Type": "application/json",
-        },
-      }
+      { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
 }

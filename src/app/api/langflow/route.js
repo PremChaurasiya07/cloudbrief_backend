@@ -1,15 +1,16 @@
  export async function POST(request) {
-     const {query}=await request.json();
+     const {query,userid}=await request.json();
      console.log(query)
+    
     const response = await fetch("http://localhost:7860/api/v1/run/8aab738a-51cc-4175-8694-7d4aa96e377b", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-         "authorization": `Bearer ${process_env_LANGFLOW_API_AUTH_KEY}`,
+         "authorization": `Bearer ${process.env.process_env_LANGFLOW_API_AUTH_KEY}`,
         },
         body: JSON.stringify({
       
-          "input_value":query,
+          "input_value":{query: query, user_id: userid},
           "input_type": "chat",
           "output_type": "chat",
           "session_id": "user_2"

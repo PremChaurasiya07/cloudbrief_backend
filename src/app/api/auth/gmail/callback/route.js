@@ -9,7 +9,7 @@ const oauth2Client = new google.auth.OAuth2(
 );
 
 // Function to refresh access token automatically
-async function refreshAccessToken(userId, refreshToken) {
+export async function refreshAccessToken(userId, refreshToken) {
   oauth2Client.setCredentials({ refresh_token: refreshToken });
 
   try {
@@ -17,7 +17,7 @@ async function refreshAccessToken(userId, refreshToken) {
     const newAccessToken = credentials.access_token;
     const newExpiryMillis = credentials.expiry_date || null;
 
-    // Update the user's access_token and expiry_date in Supabase
+    // Update Supabase
     const { error } = await supabase
       .from('email_auth')
       .update({
@@ -32,7 +32,13 @@ async function refreshAccessToken(userId, refreshToken) {
       console.log("Access token refreshed successfully.");
     }
 
-    return newAccessToken;
+    // Set refreshed credentials
+    oauth2Client.setCredentials({ access_token: newAccessToken });
+
+    // ✅ Return the Gmail client
+    const gmail = google.gmail({ version: "v1", auth: oauth2Client });
+    return gmail;
+
   } catch (error) {
     console.error("Error refreshing access token:", error);
     return null;

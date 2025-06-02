@@ -76,11 +76,16 @@
 // }
 
 
+
 import { supabase } from "../../../../../../lib/supabase.js";
 
-export async function GET() {
+export async function POST(request) {
+    const { userId } = await request.json(); // Assuming userId is sent in the request body
+    if(!userId){
+        return Response.json({ error: "User ID is required" }, { status: 400 });
+    }
     try {
-        const currentUserId = '00000000-0000-0000-0000-000000000001'; // Replace with session-based user ID
+        const currentUserId = userId; // Replace with session-based user ID
 
         // Step 1: Get user's WhatsApp ID from app_user_platformid
         const { data: platformData, error: platformError } = await supabase
@@ -176,7 +181,8 @@ export async function GET() {
                 id: chat_id,
                 name: contactName,
                 timestamp: latest.created_at,
-                isGroup
+                isGroup,
+                chat_id: chat_id
             });
         }
 
