@@ -6,7 +6,7 @@ export async function POST(req) {
   try {
     const body = await req.json();
     const { accessToken, refreshToken, gmailMessageId } = body;
-    const supabaseId="5957b4ac-d7f9-4b03-8432-9f3004001500";
+    const supabaseId=process.env.SUPABASE_ID;
     // Validate required parameters
     if (!accessToken || !refreshToken || !gmailMessageId || !supabaseId) {
       return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });

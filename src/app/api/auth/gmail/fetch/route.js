@@ -5,6 +5,7 @@ import { supabase } from "../../../../../../lib/supabase.js";
 import { Buffer } from "buffer";
 import { htmlToText } from "html-to-text";
 import embed from "../../embedding.js";
+import crypto from "crypto"; // Ensure crypto is imported for createEmailHash
 
 // Decode base64 encoded message body from Gmail API
 function decodeBase64(data) {
@@ -17,52 +18,36 @@ function decodeBase64(data) {
   }
 }
 
-// Advanced text cleaning function
+// Advanced text cleaning function (for embedding/search)
 function cleanText(content) {
-  if (!content || typeof content !== 'string') return "";
-  
-  // Remove zero-width characters and other invisible Unicode characters
-  content = content.replace(/[\u200B-\u200D\uFEFF\u00A0\u2028\u2029]/g, "");
-  
-  // Remove HTML entities that might remain
-  content = content.replace(/&[#\w]+;/g, " ");
-  
-  // Replace multiple whitespace characters with single space
-  content = content.replace(/[\s\t\r\n]+/g, " ");
-  
-  // Remove any remaining HTML/XML tags aggressively
-  content = content.replace(/<[^>]*>/g, " ");
-  
-  // Remove email tracking pixels and hidden content
-  content = content.replace(/\[.*?\]/g, " ");
-  
-  // Remove URLs that are not meaningful
-  content = content.replace(/https?:\/\/[^\s]+/g, "[URL]");
-  
-  // Remove email addresses from content (keep meaningful text)
-  content = content.replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g, "[EMAIL]");
-  
-  // Remove excessive punctuation
-  content = content.replace(/[.,;:!?]{2,}/g, ".");
-  
-  // Clean up remaining special characters but keep basic punctuation
-  content = content.replace(/[^\w\s.,;:!?'"()-]/g, " ");
-  
-  // Final cleanup - normalize spaces and trim
-  content = content.replace(/\s+/g, " ").trim();
-  
+  if (!content || typeof content !== "string") return "";
+
+  content = content.replace(/[\u200B-\u200D\uFEFF\u00A0\u2028\u2029]/g, ""); // zero-width etc.
+  content = content.replace(/&[#\w]+;/g, " "); // HTML entities
+  content = content.replace(/[\s\t\r\n]+/g, " "); // whitespace normalize
+  content = content.replace(/<[^>]*>/g, " "); // remove HTML/XML tags aggressively
+  content = content.replace(/\[.*?\]/g, " "); // remove email tracking pixels and hidden
+  content = content.replace(/https?:\/\/[^\s]+/g, "[URL]"); // replace URLs with placeholder
+  content = content.replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g, "[EMAIL]"); // mask emails
+  content = content.replace(/[.,;:!?]{2,}/g, "."); // excessive punctuation
+  content = content.replace(/[^\w\s.,;:!?'"()-]/g, " "); // special chars except basic punctuation
+  content = content.replace(/\s+/g, " ").trim(); // final whitespace cleanup
+
   return content;
 }
 
-// Enhanced message extraction with better handling
-function extractMessage(payload) {
+// Enhanced message extraction (now returns both cleaned text and raw HTML)
+function extractMessageAndHtml(payload) {
   let extractedContent = "";
-  
+  let rawHtmlContent = ""; // To store the original HTML
+
   try {
-    // Direct body data (simple messages)
+    // Direct body (simple messages)
     if (payload?.body?.data) {
       extractedContent = decodeBase64(payload.body.data);
-      return cleanText(extractedContent);
+      // If it's a simple text body, rawHtmlContent is the same
+      rawHtmlContent = extractedContent;
+      return { cleaned: cleanText(extractedContent), rawHtml: rawHtmlContent };
     }
 
     // Multi-part messages
@@ -71,76 +56,52 @@ function extractMessage(payload) {
       const textPart = payload.parts.find(
         (part) => part.mimeType === "text/plain" && part.body?.data
       );
-      
       if (textPart?.body?.data) {
         extractedContent = decodeBase64(textPart.body.data);
-        return cleanText(extractedContent);
+        // If text part exists, assume it's the primary content for cleaning
+        rawHtmlContent = extractedContent; // Or find a corresponding HTML part if available
+        return { cleaned: cleanText(extractedContent), rawHtml: rawHtmlContent };
       }
 
       // Priority 2: Look for text/html and convert
       const htmlPart = payload.parts.find(
         (part) => part.mimeType === "text/html" && part.body?.data
       );
-      
       if (htmlPart?.body?.data) {
-        const rawHtml = decodeBase64(htmlPart.body.data);
-        
-        // Enhanced HTML to text conversion
-        extractedContent = htmlToText(rawHtml, {
-          wordwrap: false, // Don't wrap lines
+        rawHtmlContent = decodeBase64(htmlPart.body.data); // Store raw HTML
+        extractedContent = htmlToText(rawHtmlContent, { // Convert to plain text for cleaning
+          wordwrap: false,
           selectors: [
-            // Skip common email elements
-            { selector: 'style', format: 'skip' },
-            { selector: 'script', format: 'skip' },
-            { selector: 'noscript', format: 'skip' },
-            { selector: 'head', format: 'skip' },
-            { selector: '.email-signature', format: 'skip' },
-            { selector: '.footer', format: 'skip' },
-            { selector: '[style*="display:none"]', format: 'skip' },
-            { selector: '[style*="visibility:hidden"]', format: 'skip' },
-            
-            // Handle links better
-            { selector: 'a', options: { 
-              ignoreHref: true, 
-              hideLinkHrefIfSameAsText: true 
-            }},
-            
-            // Skip images but keep alt text
-            { selector: 'img', format: 'skip' },
-            
-            // Format tables as text
-            { selector: 'table', format: 'dataTable' },
-            
-            // Add line breaks for block elements
-            { selector: 'div', options: { leadingLineBreaks: 1, trailingLineBreaks: 1 }},
-            { selector: 'p', options: { leadingLineBreaks: 1, trailingLineBreaks: 1 }},
-            { selector: 'br', format: 'lineBreak' }
+            { selector: "style", format: "skip" },
+            { selector: "script", format: "skip" },
+            { selector: "noscript", format: "skip" },
+            { selector: "head", format: "skip" },
+            { selector: ".email-signature", format: "skip" },
+            { selector: ".footer", format: "skip" },
+            { selector: '[style*="display:none"]', format: "skip" },
+            { selector: '[style*="visibility:hidden"]', format: "skip" },
+            { selector: "a", options: { ignoreHref: true, hideLinkHrefIfSameAsText: true } },
+            { selector: "img", format: "skip" },
+            { selector: "table", format: "dataTable" },
+            { selector: "div", options: { leadingLineBreaks: 1, trailingLineBreaks: 1 } },
+            { selector: "p", options: { leadingLineBreaks: 1, trailingLineBreaks: 1 } },
+            { selector: "br", format: "lineBreak" },
           ],
-          
-          // General options
           preserveNewlines: false,
           uppercaseHeadings: false,
           hideLinkHrefIfSameAsText: true,
           ignoreHref: true,
           ignoreImage: true,
-          
-          // Limits
-          limits: {
-            maxInputLength: 1000000,
-            ellipsis: '...'
-          }
+          limits: { maxInputLength: 1000000, ellipsis: "..." },
         });
-        
-        return cleanText(extractedContent);
+        return { cleaned: cleanText(extractedContent), rawHtml: rawHtmlContent };
       }
 
-      // Priority 3: Try to extract from nested parts (multipart/alternative, etc.)
+      // Nested parts fallback
       for (const part of payload.parts) {
         if (part.parts?.length) {
-          const nestedContent = extractMessage(part);
-          if (nestedContent.trim()) {
-            return nestedContent;
-          }
+          const nestedResult = extractMessageAndHtml(part);
+          if (nestedResult.cleaned.trim()) return nestedResult;
         }
       }
     }
@@ -148,24 +109,23 @@ function extractMessage(payload) {
     console.error("Error extracting message content:", error);
   }
 
-  return "";
+  return { cleaned: "", rawHtml: "" };
 }
 
 // Create a unique hash for email content to prevent duplicates
-function createEmailHash(messageId, from, subject, content) {
-  const crypto = require('crypto');
-  const uniqueString = `${messageId}-${from}-${subject}-${content.substring(0, 100)}`;
-  return crypto.createHash('sha256').update(uniqueString).digest('hex');
+function createEmailHash(messageId, sender, subject, content) {
+  const uniqueString = `${messageId}-${sender}-${subject}-${content.substring(0, 100)}`;
+  return crypto.createHash("sha256").update(uniqueString).digest("hex");
 }
 
-// Enhanced duplicate checking
-async function checkForDuplicates(messageIds, userFilter) {
+// Check duplicates by chat_id for this user and source/type
+async function checkForDuplicates(messageIds, user_id) {
   try {
     const { data: existingEntries, error } = await supabase
       .from("memory_entries")
-      .select("chat_id, metadata")
+      .select("chat_id")
       .in("chat_id", messageIds)
-      .eq("user_id", userFilter.user_id)
+      .eq("user_id", user_id)
       .eq("source", "gmail")
       .eq("type", "email");
 
@@ -173,53 +133,50 @@ async function checkForDuplicates(messageIds, userFilter) {
       console.error("Error checking duplicates:", error);
       return [];
     }
-
-    return existingEntries.map(entry => entry.chat_id);
+    return existingEntries.map((entry) => entry.chat_id);
   } catch (error) {
     console.error("Error in duplicate check:", error);
     return [];
   }
 }
 
-// Main POST function
 export async function POST(req) {
   try {
     const { accessToken, user_id } = await req.json();
 
-    // Validation
     if (!accessToken || !user_id) {
       return new Response(
         JSON.stringify({
           error: "Missing required parameters",
-          message: "accessToken and user_id are required"
+          message: "accessToken and user_id are required",
         }),
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
 
-    // Setup Gmail API
+    // Setup Gmail client
     const auth = new google.auth.OAuth2();
     auth.setCredentials({
       access_token: accessToken,
-      expiry_date: Date.now() + 3600 * 1000 * 24 * 30, // 30 days
+      expiry_date: Date.now() + 3600 * 1000 * 24 * 30,
     });
 
     const gmail = google.gmail({ version: "v1", auth });
 
-    // Fetch messages with error handling
+    // Fetch unread messages
     let messagesResponse;
     try {
       messagesResponse = await gmail.users.messages.list({
         userId: "me",
         q: "is:unread",
-        maxResults: 50, // Increased to get more emails
+        maxResults: 30,
       });
     } catch (gmailError) {
       if (gmailError?.response?.status === 401) {
         return new Response(
           JSON.stringify({
             error: "AccessTokenExpired",
-            message: "Gmail access token has expired. Please reconnect."
+            message: "Gmail access token has expired. Please reconnect.",
           }),
           { status: 401, headers: { "Content-Type": "application/json" } }
         );
@@ -233,34 +190,27 @@ export async function POST(req) {
         JSON.stringify({
           message: "No unread messages found",
           inserted: 0,
-          totalFetched: 0
+          totalFetched: 0,
         }),
         { status: 200, headers: { "Content-Type": "application/json" } }
       );
     }
 
-    const messageIds = messages.map(msg => msg.id);
-    
-    // Enhanced duplicate checking
-    const existingMessageIds = await checkForDuplicates(messageIds, { user_id });
-    
+    const messageIds = messages.map((m) => m.id);
+    const existingMessageIds = await checkForDuplicates(messageIds, user_id);
     console.log(`Found ${existingMessageIds.length} existing messages out of ${messageIds.length} fetched`);
 
     const messagesToInsert = [];
-    const processedHashes = new Set(); // Additional hash-based duplicate prevention
+    const processedHashes = new Set();
 
-    // Process each message
     for (const msg of messages) {
       const messageId = msg.id;
-
-      // Skip if already exists in database
       if (existingMessageIds.includes(messageId)) {
         console.log(`Skipping existing message: ${messageId}`);
         continue;
       }
 
       try {
-        // Get full message details
         const messageDetail = await gmail.users.messages.get({
           userId: "me",
           id: messageId,
@@ -270,11 +220,7 @@ export async function POST(req) {
         const payload = messageDetail.data.payload;
         const headers = payload?.headers || [];
 
-        // Extract header information safely
-        const getHeader = (name) => {
-          const header = headers.find(h => h.name?.toLowerCase() === name.toLowerCase());
-          return header?.value || '';
-        };
+        const getHeader = (name) => headers.find((h) => h.name?.toLowerCase() === name.toLowerCase())?.value || "";
 
         const from = getHeader("From");
         const to = getHeader("To");
@@ -282,15 +228,14 @@ export async function POST(req) {
         const date = getHeader("Date");
         const messageIdHeader = getHeader("Message-ID");
 
-        // Extract and clean content
-        const cleanedContent = extractMessage(payload);
-        
+        // Use the new function that returns both cleaned text and raw HTML
+        const { cleaned: cleanedContent, rawHtml: originalHtmlContent } = extractMessageAndHtml(payload);
+
         if (!cleanedContent || cleanedContent.length < 10) {
           console.warn(`Skipping message with insufficient content: ${messageId}`);
           continue;
         }
 
-        // Create hash for additional duplicate prevention
         const contentHash = createEmailHash(messageId, from, subject, cleanedContent);
         if (processedHashes.has(contentHash)) {
           console.log(`Skipping duplicate content hash: ${messageId}`);
@@ -298,24 +243,22 @@ export async function POST(req) {
         }
         processedHashes.add(contentHash);
 
-        // Determine read status
         const labels = messageDetail.data.labelIds || [];
         const isUnread = labels.includes("UNREAD");
         const status = isUnread ? "unread" : "read";
 
-        // Parse date safely
         let parsedDate;
         try {
           parsedDate = date ? new Date(date).toISOString() : new Date().toISOString();
-        } catch (dateError) {
-          console.warn(`Invalid date format for message ${messageId}: ${date}`);
+        } catch {
           parsedDate = new Date().toISOString();
         }
 
-        // Prepare message for insertion
+        // Build message entry
         const messageEntry = {
           user_id,
-          content: cleanedContent,
+          content: cleanedContent, // Cleaned text for search/embedding
+          raw_html: originalHtmlContent, // NEW: Store original HTML for display
           type: "email",
           source: "gmail",
           chat_id: messageId,
@@ -326,55 +269,45 @@ export async function POST(req) {
             message_id_header: messageIdHeader,
             sender: from,
             receiver: to,
-            subject: subject,
-            status: status,
+            subject,
+            status,
             created_at: parsedDate,
             type: "email",
             source: "gmail",
             thread_id: messageDetail.data.threadId,
             label_ids: labels,
-            content_hash: contentHash
+            content_hash: contentHash,
           },
         };
 
         messagesToInsert.push(messageEntry);
-
       } catch (messageError) {
         console.error(`Error processing message ${messageId}:`, messageError);
-        continue; // Skip this message and continue with others
+        continue;
       }
     }
 
-    // Batch insert with final duplicate check
-    let insertedCount = 0;
-    if (messagesToInsert.length > 0) {
-      console.log(`Attempting to insert ${messagesToInsert.length} new messages`);
-      
-      // Final duplicate check before insertion (using upsert to handle race conditions)
-      const { data: insertedData, error: insertError } = await supabase
-        .from("memory_entries")
-        .upsert(messagesToInsert, { 
-          onConflict: 'user_id,chat_id',
-          ignoreDuplicates: true 
-        })
-        .select('id');
-
-      if (insertError) {
-        console.error("Database insertion error:", insertError);
-        return new Response(
-          JSON.stringify({
-            error: "Failed to insert messages",
-            details: insertError.message
-          }),
-          { status: 500, headers: { "Content-Type": "application/json" } }
-        );
-      }
-
-      insertedCount = insertedData?.length || 0;
-      console.log(`Successfully inserted ${insertedCount} new messages`);
+    if (messagesToInsert.length === 0) {
+      return new Response(
+        JSON.stringify({ message: "No new messages to insert", inserted: 0 }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
     }
 
-    // Trigger embedding process
+    // Upsert all new messages in one batch
+    const { data: upsertedData, error: upsertError } = await supabase
+      .from("memory_entries")
+      .upsert(messagesToInsert, { onConflict: 'user_id,message_unique_id', ignoreDuplicates: true }); // Changed onConflict to chat_id as it's unique per message
+
+    if (upsertError) {
+      console.error("Supabase upsert error:", upsertError);
+      return new Response(
+        JSON.stringify({ error: upsertError.message }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    // Trigger embedding process (assuming 'embed' handles the new 'raw_html' or just uses 'content')
     try {
       await embed();
       console.log("Embedding process completed");
@@ -385,23 +318,17 @@ export async function POST(req) {
 
     return new Response(
       JSON.stringify({
-        success: true,
-        inserted: insertedCount,
+        message: "Messages inserted successfully",
+        inserted: upsertedData?.length || 0, // Use upsertedData.length for actual inserted count
         totalFetched: messages.length,
-        duplicatesSkipped: messages.length - messagesToInsert.length,
-        message: `Successfully processed ${messages.length} emails, inserted ${insertedCount} new ones`
+        duplicatesSkipped: messages.length - (upsertedData?.length || 0),
       }),
       { status: 200, headers: { "Content-Type": "application/json" } }
     );
-
   } catch (error) {
     console.error("Unhandled error in Gmail fetch:", error);
     return new Response(
-      JSON.stringify({
-        error: "Internal server error",
-        message: error.message,
-        details: process.env.NODE_ENV === 'development' ? error.stack : undefined
-      }),
+      JSON.stringify({ error: error.message || "Unknown error" }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }

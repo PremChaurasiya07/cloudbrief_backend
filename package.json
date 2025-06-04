@@ -16,6 +16,7 @@
     "@supabase/supabase-js": "^2.49.8",
     "@whiskeysockets/baileys": "^6.7.17",
     "cors": "^2.8.5",
+    "crypto-js": "^4.2.0",
     "date-fns": "^4.1.0",
     "dotenv": "^16.5.0",
     "googleapis": "^148.0.0",

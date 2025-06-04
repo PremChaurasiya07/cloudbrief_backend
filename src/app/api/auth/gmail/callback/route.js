@@ -1,6 +1,6 @@
 import { google } from "googleapis";
 import { supabase } from "../../../../../../lib/supabase";
-
+import CryptoJS from 'crypto-js';
 // OAuth client
 const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_ID,
@@ -48,26 +48,24 @@ export async function refreshAccessToken(userId, refreshToken) {
 export async function GET(req) {
   const url = new URL(req.url);
   const code = url.searchParams.get("code");
+  const userId = url.searchParams.get("state");
 
-  if (!code) {
-    return new Response("No authorization code provided", { status: 400 });
-  }
 
   try {
-    // Exchange code for tokens
+
+    if (!code) {
+      return new Response("No authorization code provided", { status: 400 });
+    }
+
+    // 🔄 Get Google tokens
     const { tokens } = await oauth2Client.getToken(code);
     oauth2Client.setCredentials(tokens);
-    console.log("Tokens received:", tokens);
 
-    // Fetch user's Gmail account (email)
+    // 📧 Get Gmail account info
     const oauth2 = google.oauth2({ auth: oauth2Client, version: 'v2' });
     const { data: userInfo } = await oauth2.userinfo.get();
     const gmailId = userInfo.email;
 
-    // Use session or request context to identify your app's user
-    const userId = '00000000-0000-0000-0000-000000000001'; // Replace this with actual app user ID
-
-    // Check if this Gmail is already stored for the user
     const { data, error: fetchError } = await supabase
       .from('email_auth')
       .select('*')
@@ -96,7 +94,7 @@ export async function GET(req) {
         return new Response("Failed to insert token data", { status: 500 });
       }
 
-      console.log("New Gmail account linked and tokens stored.");
+      console.log("✅ New Gmail account linked.");
     } else {
       const updateFields = {
         access_token: tokens.access_token,
@@ -117,16 +115,17 @@ export async function GET(req) {
         return new Response("Failed to update token data", { status: 500 });
       }
 
-      console.log("Tokens updated for existing Gmail account.");
+      console.log("✅ Tokens updated for existing Gmail account.");
     }
 
     return Response.redirect("http://localhost:8080/gmail", 302);
 
   } catch (error) {
-    console.error("OAuth error:", error);
+    console.error("OAuth callback error:", error);
     return new Response("Failed to authenticate with Google", {
       status: 500,
       headers: { "Content-Type": "text/plain" },
     });
   }
 }
+
