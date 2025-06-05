@@ -83,7 +83,7 @@ export async function POST(req) {
       .select("content, created_at, sender, chat_id, metadata")
       .eq("chat_id", chat_id)
       .eq("source", "whatsapp")
-      .order("created_at", { ascending: true });
+      .order("created_at", { ascending: true }).limit(50);
 
     if (messagesError) {
       console.error("Error fetching messages:", messagesError);
