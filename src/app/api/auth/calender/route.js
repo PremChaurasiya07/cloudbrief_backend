@@ -6,7 +6,7 @@ export async function POST(req) {
     const body = await req.json();
     const { user_id, gmail } = body;
 
-    const calendar = await authorize(user_id, gmail);
+    await authorize(user_id, gmail);
 
     // Just return a success response for test
     return NextResponse.json({ message: 'Authorized successfully' });
