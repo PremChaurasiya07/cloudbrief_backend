@@ -1,6 +1,5 @@
 import { google } from "googleapis";
 import { supabase } from "../../../../../../lib/supabase";
-import CryptoJS from 'crypto-js';
 // OAuth client
 const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_ID,

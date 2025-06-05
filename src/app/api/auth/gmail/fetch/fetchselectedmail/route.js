@@ -28,7 +28,7 @@ export async function POST(req) {
     const metadata = data.metadata || {};
 
     let decryptedBody = '';
-    let decryptedHtml = '';
+    // let decryptedHtml = '';
 
     try {
       decryptedBody = decryptMessage(data.content, userid);

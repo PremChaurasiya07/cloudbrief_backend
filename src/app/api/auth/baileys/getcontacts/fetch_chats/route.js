@@ -53,7 +53,7 @@ import { supabase } from "../../../../../../../lib/supabase";
 import { decryptMessage } from "../../../../data_security/route"; // adjust path as needed
 
 export async function POST(req) {
-  const { userid, chat_id, name, isgroup } = await req.json();
+  const { userid, chat_id } = await req.json();
 
   if (!chat_id) {
     return new Response(JSON.stringify({ message: "chat_id not provided" }), { status: 400 });

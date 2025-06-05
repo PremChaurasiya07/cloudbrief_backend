@@ -3,7 +3,7 @@
 import { google } from 'googleapis';
 import { supabase } from '../../../../../../lib/supabase';
 
-export async function POST(req, res) {
+export async function POST(req) {
   const { refresh_token } = await req.json(); // Refresh token from request body
   console.log('Received refresh_token:', refresh_token); // Log the received refresh token
 
