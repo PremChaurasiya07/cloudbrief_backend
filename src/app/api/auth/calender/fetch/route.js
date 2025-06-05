@@ -2,7 +2,7 @@
 
 
 import { NextResponse } from 'next/server';
-import authorize from '../route';
+import {authorize} from '../../../../../../lib/authorize' 
 
 export async function POST(req) {
   const { user_id,gmail } = await req.json();

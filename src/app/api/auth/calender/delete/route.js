@@ -1,4 +1,4 @@
-import authorize from '../route';  // Importing the authorization function
+import {authorize} from '../../../../../../lib/authorize'   // Importing the authorization function
 import { NextResponse } from 'next/server';
 
 export async function DELETE(req) {
