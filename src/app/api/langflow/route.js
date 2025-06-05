@@ -1,48 +1,44 @@
- export async function POST(request) {
-  const { query, userid } = await request.json();
+// route.ts (assuming Next.js or similar edge function)
 
-  const response = await fetch("http://localhost:7860/api/v1/run/8aab738a-51cc-4175-8694-7d4aa96e377b", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "authorization": `Bearer ${process.env.LANGFLOW_API_AUTH_KEY}`,
-    },
-    body: JSON.stringify({
-      input_value: query, // ✅ must be a string
-      input_type: "chat",
-      output_type: "chat",
-      session_id: userid || "Not_known",
-    }),
-  });
-
-  const data = await response.json();
-
-  let message = "❌ No response received.";
-
+export async function POST(request) {
   try {
-    message = data.outputs?.[0]?.outputs?.[0]?.output_value || message;
-  } catch (err) {
-    console.error("Failed to extract output_value:", err);
+    const { query, userid } = await request.json();
+    console.log(userid)
+    if(!query || !userid){
+      return Response.json({ message: "missing query or userid" }, { status: 302 });
+    }
+
+    const response = await fetch("http://localhost:7860/api/v1/run/8aab738a-51cc-4175-8694-7d4aa96e377b", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.LANGFLOW_API_AUTH_KEY}`,
+      },
+      body: JSON.stringify({
+        input_value:`{"user_id": "${userid}","query": "${query}"}`,
+
+        input_type: "chat",
+        output_type: "chat",
+        session_id: userid || "Not_known",
+      }),
+    });
+
+    const data = await response.json();
+    
+
+    const message = data?.outputs?.[0]?.outputs?.[0]?.results.message.data.text || "❌ No response received.";
+
+    return Response.json({ summary: message }, { status: 200 });
+  } catch (error) {
+    console.error("POST /langflow error:", error);
+    return Response.json({ error: "Something went wrong." }, { status: 500 });
   }
-
-  // ✅ Optional: format for clean UI display
-  const formatted = `
-💬 WhatsApp Summary for ${new Date().toLocaleDateString()}:
-
-${message}
-`.trim();
-
-  return Response.json({ summary: formatted }, { status: 200 });
 }
 
+export async function GET() {
+  return Response.json({ message: "langflow" }, { status: 200 });
+}
 
-
-  export async function GET(){
-  return Response.json({message:"langflow"}, {
-    status: 200,      
-  }
-);
-  }
 
 // export async function POST(request) {
 //   const { query } = await request.json();

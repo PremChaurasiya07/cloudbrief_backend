@@ -4,42 +4,38 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-// 1. Init Supabase client
+// Init Supabase
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
-// 2. Init Google Generative AI
+// Init Google Generative AI
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
+const model = genAI.getGenerativeModel({ model: "text-embedding-004" });
 
-// Helper function to calculate byte length of a string
+// Byte helpers
 function getByteLength(str) {
   try {
     return new TextEncoder().encode(str).length;
   } catch (err) {
     console.error("Byte length calculation failed:", err);
-    return Infinity; // Prevent processing if byte length can't be calculated
+    return Infinity;
   }
 }
 
-// Helper function to truncate string to a specific byte limit
 function truncateToByteLimit(str, maxBytes) {
   if (getByteLength(str) <= maxBytes) return str;
 
-  // Use Buffer for precise UTF-8 byte slicing
   const buffer = Buffer.from(str, "utf8");
   let end = Math.min(buffer.length, maxBytes);
 
-  // Ensure we don't split multi-byte characters
   while (end > 0 && (buffer[end] & 0xc0) === 0x80) {
     end--;
   }
 
-  // Convert back to string
   let result = buffer.slice(0, end).toString("utf8");
 
-  // Double-check byte length
   while (getByteLength(result) > maxBytes && result.length > 0) {
     result = result.slice(0, -1);
   }
@@ -47,59 +43,55 @@ function truncateToByteLimit(str, maxBytes) {
   return result;
 }
 
-async function embed() {
-  // Fetch messages with null embeddings
+// Main embed function
+async function embed(content = null) {
+  const MAX_BYTE_LIMIT = 30000;
+
+  // Direct content embedding mode
+  if (content) {
+    try {
+      let content = content;
+      const byteLen = getByteLength(content);
+
+      if (byteLen > MAX_BYTE_LIMIT) {
+        console.warn(`⚠️ Input content exceeds ${MAX_BYTE_LIMIT} bytes. Truncating.`);
+        content = truncateToByteLimit(content, MAX_BYTE_LIMIT);
+      }
+
+      const result = await model.embedContent(content);
+      const vector = result.embedding.values;
+      console.log("✅ Embedding generated for direct input.");
+      return vector;
+    } catch (err) {
+      console.error("❌ Error embedding direct input content:", err);
+      return null;
+    }
+  }
+
+  // Supabase mode
   const { data: messages, error } = await supabase
     .from("memory_entries")
     .select("id, content")
     .is("embedding", null);
 
   if (error) {
-    console.error("Error fetching contents:", error);
+    console.error("❌ Error fetching messages from Supabase:", error);
     return;
   }
 
-  // Use the embedding model
-  const model = genAI.getGenerativeModel({ model: "text-embedding-004" });
-  const MAX_BYTE_LIMIT = 30000; // Lowered to avoid any overhead
-
   for (const message of messages) {
     try {
-      // Check and truncate content if necessary
-      let content = message.content || ""; // Handle null/undefined
-      const originalByteLength = getByteLength(content);
+      let content = message.content || "";
+      const byteLen = getByteLength(content);
 
-      if (originalByteLength === Infinity) {
-        console.error(
-          `❌ Skipping ID ${message.id}: Invalid content (byte length calculation failed).`
-        );
-        continue;
-      }
-
-      if (originalByteLength > MAX_BYTE_LIMIT) {
-        console.warn(
-          `⚠️ Content for ID ${message.id} exceeds ${MAX_BYTE_LIMIT} bytes (${originalByteLength} bytes, ${content.length} chars). Truncating.`
-        );
+      if (byteLen > MAX_BYTE_LIMIT) {
+        console.warn(`⚠️ ID ${message.id} content too large. Truncating.`);
         content = truncateToByteLimit(content, MAX_BYTE_LIMIT);
-        const truncatedByteLength = getByteLength(content);
-
-        console.log(
-          `📏 ID ${message.id}: Original ${originalByteLength} bytes, Truncated to ${truncatedByteLength} bytes (${content.length} chars).`
-        );
-
-        if (truncatedByteLength > MAX_BYTE_LIMIT || truncatedByteLength === 0) {
-          console.error(
-            `❌ Skipping ID ${message.id}: Truncation failed or empty (${truncatedByteLength} bytes).`
-          );
-          continue;
-        }
       }
 
-      // Generate embedding
       const result = await model.embedContent(content);
-      const vector = result.embedding.values; // Extract the embedding vector
+      const vector = result.embedding.values;
 
-      // Update the embedding in the correct table
       const { error: updateError } = await supabase
         .from("memory_entries")
         .update({ embedding: vector })
@@ -108,7 +100,7 @@ async function embed() {
       if (updateError) {
         console.error(`❌ Failed to update ID ${message.id}:`, updateError);
       } else {
-        console.log(`✅ Updated embedding for ID ${message.id}`);
+        console.log(`✅ Embedded and updated ID ${message.id}`);
       }
     } catch (err) {
       console.error(`❌ Embedding error for ID ${message.id}:`, err);

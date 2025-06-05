@@ -6,6 +6,8 @@ import { Buffer } from "buffer";
 import { htmlToText } from "html-to-text";
 import embed from "../../embedding.js";
 import crypto from "crypto"; // Ensure crypto is imported for createEmailHash
+import { encryptMessage } from "../../../data_security/route.js";
+
 
 // Decode base64 encoded message body from Gmail API
 function decodeBase64(data) {
@@ -169,7 +171,7 @@ export async function POST(req) {
       messagesResponse = await gmail.users.messages.list({
         userId: "me",
         q: "is:unread",
-        maxResults: 30,
+        maxResults:20,
       });
     } catch (gmailError) {
       if (gmailError?.response?.status === 401) {
@@ -255,10 +257,13 @@ export async function POST(req) {
         }
 
         // Build message entry
+        const encryptedContent = encryptMessage(cleanedContent,user_id);
+        // const encryptedRawHtml = encryptMessage(originalHtmlContent,user_id);
+
         const messageEntry = {
           user_id,
-          content: cleanedContent, // Cleaned text for search/embedding
-          raw_html: originalHtmlContent, // NEW: Store original HTML for display
+          content: encryptedContent, // encrypted cleaned text
+          raw_html: originalHtmlContent, // encrypted raw HTML
           type: "email",
           source: "gmail",
           chat_id: messageId,

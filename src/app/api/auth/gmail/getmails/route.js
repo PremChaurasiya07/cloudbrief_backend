@@ -1,3 +1,4 @@
+import { decryptMessage } from "../../../data_security/route"
 import { supabase } from "../../../../../../lib/supabase";
 
 export async function POST(req) {
@@ -17,23 +18,27 @@ export async function POST(req) {
 
         // Process mails and extract 'subject' and 'status' from metadata
         const processedMails = mails.map(mail => {
-            // Log the metadata to verify structure (remove this after debugging)
-            // console.log(mail.metadata); 
+        const metadata = mail.metadata || {};
+        let decryptedContent;
 
-            // Directly use 'metadata' without parsing
-            const metadata = mail.metadata || {};
+        try {
+            decryptedContent = decryptMessage(mail.content,user_id);
+        } catch {
+            decryptedContent = "[Failed to decrypt]";
+        }
 
-            return {
-                id:mail.id,
-                sender: mail.sender,
-                content: mail.content,
-                created_at: mail.created_at,
-                chat_id: mail.chat_id,
-                subject: metadata.subject || "No Subject", // Extract subject from metadata
-                status: metadata.status || "Unknown", // Extract status from metadata
-                starred:mail.starred
-            };
+        return {
+            id: mail.id,
+            sender: mail.sender,
+            content: decryptedContent,
+            created_at: mail.created_at,
+            chat_id: mail.chat_id,
+            subject: metadata.subject || "No Subject",
+            status: metadata.status || "Unknown",
+            starred: mail.starred
+        };
         });
+
 
         return new Response(JSON.stringify(processedMails), { status: 200 });
 
