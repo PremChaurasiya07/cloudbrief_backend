@@ -1,13 +1,16 @@
 import type { NextConfig } from 'next';
-import type { Configuration as WebpackConfig } from 'webpack';
+import type { Configuration as WebpackConfig, WebpackOptionsNormalized } from 'webpack';
 
 const nextConfig: NextConfig = {
-  // Other Next.js configurations...
-
   webpack: (config: WebpackConfig, { isServer }: { isServer: boolean }) => {
     if (isServer) {
-      config.externals = config.externals || [];
-      config.externals.push('ws');
+      if (Array.isArray(config.externals)) {
+        config.externals.push('ws');
+      } else if (typeof config.externals === 'undefined') {
+        config.externals = ['ws'];
+      } else {
+        config.externals = [config.externals, 'ws'];
+      }
     }
     return config;
   },
