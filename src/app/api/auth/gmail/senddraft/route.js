@@ -1,7 +1,7 @@
 // pages/api/gmail/sendDraft.js
 import { refreshAccessToken } from "../../../../../../lib/google/refreshAccessToken";
 
-export default async function handler(req, res) {
+export async function POST(req, res) {
   const { draftId, accessToken,userId } = req.json();
   if (!draftId || !accessToken||!userId) return res.status(400).json({ error: "Missing draftId or accessToken" });
 
