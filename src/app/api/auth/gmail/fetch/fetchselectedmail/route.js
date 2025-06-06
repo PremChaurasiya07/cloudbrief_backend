@@ -1,5 +1,5 @@
 import { supabase } from "../../../../../../../lib/supabase"; 
-import { decryptMessage } from "@/app/api/data_security/route";
+import { decryptMessage } from "../../../../../../../lib/data_security";
 import { NextResponse } from "next/server";
 
 export async function POST(req) {

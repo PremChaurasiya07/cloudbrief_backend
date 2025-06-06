@@ -1,5 +1,5 @@
 // app/api/gmail/drafts/route.js
-import { refreshAccessToken } from "../callback/route";
+import { refreshAccessToken } from "../../../../../../lib/google/refreshAccessToken";
 import { NextResponse } from "next/server";
 
 export async function POST(req) {

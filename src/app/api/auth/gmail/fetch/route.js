@@ -6,7 +6,7 @@ import { Buffer } from "buffer";
 import { htmlToText } from "html-to-text";
 import embed from "../../embedding.js";
 import crypto from "crypto"; // Ensure crypto is imported for createEmailHash
-import { encryptMessage } from "../../../data_security/route.js";
+import { encryptMessage } from "../../../../../../lib/data_security.js";
 
 
 // Decode base64 encoded message body from Gmail API

@@ -1,4 +1,4 @@
-import { decryptMessage } from "../../../data_security/route"
+import { decryptMessage } from "../../../../../../lib/data_security"
 import { supabase } from "../../../../../../lib/supabase";
 
 export async function POST(req) {

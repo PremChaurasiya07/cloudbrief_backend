@@ -1,89 +1,58 @@
-// pages/api/auth/gmail/refresh.js
-
-import { google } from 'googleapis';
-import { supabase } from '../../../../../../lib/supabase';
+import { NextResponse } from "next/server";
+import { supabase } from "../../../../../../lib/supabase";
+import { refreshAccessToken } from "../../../../../../lib/google/refreshAccessToken"; // ✅ import reusable logic
 
 export async function POST(req) {
-  const { refresh_token } = await req.json(); // Refresh token from request body
-  console.log('Received refresh_token:', refresh_token); // Log the received refresh token
-
-  if (!refresh_token) {
-    return new Response(
-      JSON.stringify({ error: 'Missing refresh_token' }),
-      { status: 400, headers: { 'Content-Type': 'application/json' } }
-    );
-  }
-
   try {
-    // Fetch the user's refresh token from Supabase
+    const { refresh_token } = await req.json();
+
+    if (!refresh_token) {
+      return NextResponse.json({ error: "Missing refresh_token" }, { status: 400 });
+    }
+
+    // 🔍 Look up userId using refresh_token
     const { data, error } = await supabase
-      .from('email_auth')
-      .select('refresh_token')
-      .eq('refresh_token', refresh_token)
-      .single();
+      .from("email_auth")
+      .select("user_id, refresh_token")
+      .eq("refresh_token", refresh_token)
+      .maybeSingle();
 
     if (error || !data) {
-      return new Response(
-        JSON.stringify({ error: 'Refresh token not found' }),
-        { status: 404, headers: { 'Content-Type': 'application/json' } }
-      );
+      return NextResponse.json({ error: "Refresh token not found" }, { status: 404 });
     }
 
-    const storedRefreshToken = data.refresh_token;
+    const { user_id, refresh_token: storedRefreshToken } = data;
 
-    // Initialize Google OAuth2 client
-    const oauth2Client = new google.auth.OAuth2(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET
+    // 🔄 Use centralized function to refresh token and update Supabase
+    const gmailClient = await refreshAccessToken(user_id, storedRefreshToken);
+
+    if (!gmailClient) {
+      return NextResponse.json({ error: "Failed to refresh token" }, { status: 500 });
+    }
+
+    // Get the new access_token and expiry from Supabase after update
+    const { data: updatedData, error: fetchUpdated } = await supabase
+      .from("email_auth")
+      .select("access_token, token_expiry")
+      .eq("user_id", user_id)
+      .maybeSingle();
+
+    if (fetchUpdated || !updatedData) {
+      return NextResponse.json({ error: "Failed to fetch updated credentials" }, { status: 500 });
+    }
+
+    return NextResponse.json(
+      {
+        access_token: updatedData.access_token,
+        token_expiry: updatedData.token_expiry,
+      },
+      { status: 200 }
     );
-
-    oauth2Client.setCredentials({ refresh_token: storedRefreshToken });
-
-    // Refresh access token
-    const { credentials } = await oauth2Client.refreshAccessToken();
-
-    console.log('Fetched credentials:', credentials);
-
-    // Calculate expiry_date in milliseconds
-    let expiryDateMs;
-
-    if (credentials.expiry_date) {
-      expiryDateMs = credentials.expiry_date; // Already an absolute timestamp in ms
-    } else if (credentials.expires_in) {
-      expiryDateMs = Date.now() + credentials.expires_in * 1000; // expires_in is in seconds
-    } else {
-      // If none provided, default to 1 hour from now
-      expiryDateMs = Date.now() + 3600 * 1000;
-    }
-
-    console.log('Calculated expiryDateMs:', expiryDateMs);
-
-    // Update access token and expiry date in Supabase
-    const { error: updateError } = await supabase
-      .from('email_auth')
-      .update({
-        access_token: credentials.access_token,
-        token_expiry: credentials.expiry_date, // Store expiry date as absolute ms timestamp
-      })
-      .eq('refresh_token', refresh_token);
-
-    if (updateError) {
-      return new Response(
-        JSON.stringify({ error: 'Failed to update access token' }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Return new token
-    return new Response(
-      JSON.stringify({ access_token: credentials.access_token, token_expiry: expiryDateMs }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } }
-    );
-  } catch (error) {
-    console.error('Error refreshing access token:', error);
-    return new Response(
-      JSON.stringify({ error: 'Failed to refresh access token' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
+  } catch (err) {
+    console.error("Refresh error:", err);
+    return NextResponse.json(
+      { error: "Internal server error", details: err.message },
+      { status: 500 }
     );
   }
 }

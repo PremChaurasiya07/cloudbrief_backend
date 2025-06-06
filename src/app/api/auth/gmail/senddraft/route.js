@@ -1,5 +1,5 @@
 // pages/api/gmail/sendDraft.js
-import { refreshAccessToken } from "../callback/route";
+import { refreshAccessToken } from "../../../../../../lib/google/refreshAccessToken";
 
 export default async function handler(req, res) {
   const { draftId, accessToken,userId } = req.json();
