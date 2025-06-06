@@ -1,14 +1,16 @@
-// In your backend Next.js project's next.config.js
-/** @type {import('next').NextConfig} */
-const nextConfig = {
-  // ... other existing configurations
+import type { NextConfig } from 'next';
+import type { Configuration as WebpackConfig } from 'webpack';
 
-  webpack: (config, { isServer }) => {
+const nextConfig: NextConfig = {
+  // Other Next.js configurations...
+
+  webpack: (config: WebpackConfig, { isServer }: { isServer: boolean }) => {
     if (isServer) {
+      config.externals = config.externals || [];
       config.externals.push('ws');
     }
     return config;
   },
 };
 
-module.exports = nextConfig;
+export default nextConfig;
