@@ -164,10 +164,12 @@
 //     process.exit(1);
 // });
 
+// server.js
 import next from 'next';
 import http from 'http';
 import cors from 'cors';
-import pino from 'pino'; // For logging
+import { parse } from 'url';
+import pino from 'pino';
 
 import { initializeWebSocketServer, closeWebSocketServer } from './lib/websocketServer.js';
 import { shutdownWhatsAppClients, createWhatsAppClient } from './lib/whatsappSessionManager.js';
@@ -182,151 +184,135 @@ const logger = pino({ level: 'info' }).child({ module: 'MAIN-SERVER' });
 const app = next({ dev });
 const handle = app.getRequestHandler();
 
-// Define allowed origins depending on environment
-const allowedOrigins = dev
-  ? ['http://localhost:3000', 'http://localhost:5173'] // Add your local frontend URLs here
-  : (process.env.ALLOWED_ORIGINS?.split(',') || []);
-
 class MainServer {
-  constructor() {
-    this.httpServer = null;
-  }
-
-  async start() {
-    try {
-      await verifySupabaseConnection();
-      logger.info('✅ Supabase connection verified.');
-
-      await app.prepare();
-      logger.info('✅ Next.js app prepared.');
-
-      // Create HTTP server with CORS middleware applied per request
-      this.httpServer = http.createServer((req, res) => {
-        // Extract origin from request headers
-        const origin = req.headers.origin;
-
-        // Setup CORS with dynamic origin check
-        cors({
-          origin: (origin, callback) => {
-            if (!origin || allowedOrigins.indexOf(origin) !== -1) {
-              callback(null, true);
-            } else {
-              callback(new Error(`CORS policy does not allow access from origin ${origin}`));
-            }
-          },
-          methods: ['GET', 'POST', 'DELETE', 'PUT', 'OPTIONS'],
-          credentials: true,
-        })(req, res, (err) => {
-          if (err) {
-            logger.warn(`Blocked by CORS: ${err.message}`);
-            res.statusCode = 403;
-            return res.end('CORS Error: Access denied.');
-          }
-          return handle(req, res);
-        });
-      });
-
-      initializeWebSocketServer(WS_PORT);
-      logger.info(`🚀 WebSocket server running on ws://localhost:${WS_PORT}`);
-
-      this.httpServer.listen(HTTP_PORT, async () => {
-        logger.info(`🚀 Next.js HTTP server running on http://localhost:${HTTP_PORT}`);
-        logger.info(`   Environment: ${dev ? 'Development' : 'Production'}`);
-
-        await this.initializeAllWhatsAppClients();
-      });
-
-      this.setupShutdownHandlers();
-
-    } catch (error) {
-      logger.error('❌ Fatal error during server startup:', error);
-      await this.cleanup();
-      process.exit(1);
+    constructor() {
+        this.httpServer = null;
     }
-  }
 
-  async initializeAllWhatsAppClients() {
-    logger.info('Initializing WhatsApp clients from DB...');
-    try {
-      const { data: activeSessions, error } = await supabaseServer
-        .from('app_user_platformid')
-        .select('user_id, session_status')
-        .eq('platform', 'whatsapp')
-        .in('session_status', ['connected', 'reconnecting']);
+    async start() {
+        try {
+            await verifySupabaseConnection();
+            logger.info('✅ Supabase connection verified.');
 
-      if (error) {
-        logger.error({ error }, 'Error fetching active WhatsApp sessions from DB on startup.');
-        return;
-      }
+            await app.prepare();
+            logger.info('✅ Next.js app prepared.');
 
-      if (activeSessions && activeSessions.length > 0) {
-        logger.info(`Found ${activeSessions.length} active WhatsApp sessions to re-establish.`);
-        for (const session of activeSessions) {
-          logger.info(`Re-creating WhatsApp client for user: ${session.user_id} (status: ${session.session_status})`);
-          createWhatsAppClient(session.user_id)
-            .catch(err => logger.error({ err, userId: session.user_id }, `Failed to re-create WhatsApp client on startup for user ${session.user_id}`));
+            const corsMiddleware = cors({
+                origin: dev ? '*' : process.env.ALLOWED_ORIGINS?.split(',') || [],
+                methods: ['GET', 'POST', 'DELETE', 'PUT', 'OPTIONS'],
+                allowedHeaders: ['Content-Type'],
+                credentials: true,
+            });
+
+            this.httpServer = http.createServer((req, res) => {
+                corsMiddleware(req, res, () => {
+                    if (req.method === 'OPTIONS') {
+                        res.writeHead(204);
+                        res.end();
+                        return;
+                    }
+
+                    const parsedUrl = parse(req.url, true);
+                    handle(req, res, parsedUrl);
+                });
+            });
+
+            initializeWebSocketServer(WS_PORT);
+            logger.info(`🚀 WebSocket server running on ws://localhost:${WS_PORT}`);
+
+            this.httpServer.listen(HTTP_PORT, async () => {
+                logger.info(`🚀 Next.js HTTP server running on http://localhost:${HTTP_PORT}`);
+                logger.info(`   Environment: ${dev ? 'Development' : 'Production'}`);
+                await this.initializeAllWhatsAppClients();
+            });
+
+            this.setupShutdownHandlers();
+
+        } catch (error) {
+            logger.error('❌ Fatal error during server startup:', error);
+            await this.cleanup();
+            process.exit(1);
         }
-      } else {
-        logger.info('No active WhatsApp sessions found in DB to re-establish on startup.');
-      }
-    } catch (e) {
-      logger.error({ e }, 'Exception during initial WhatsApp client setup on server startup.');
     }
-  }
 
-  setupShutdownHandlers() {
-    const shutdownSignals = ['SIGINT', 'SIGTERM', 'SIGQUIT'];
+    async initializeAllWhatsAppClients() {
+        logger.info('Initializing WhatsApp clients from DB...');
+        try {
+            const { data: activeSessions, error } = await supabaseServer
+                .from('app_user_platformid')
+                .select('user_id, session_status')
+                .eq('platform', 'whatsapp')
+                .in('session_status', ['connected', 'reconnecting']);
 
-    shutdownSignals.forEach(signal => {
-      process.on(signal, async () => {
-        logger.warn(`\n🛑 Received ${signal}, initiating graceful shutdown...`);
-        await this.cleanup();
-        process.exit(0);
-      });
-    });
-
-    process.on('uncaughtException', async (err) => {
-      logger.error('⚠️ Uncaught Exception:', err);
-      await this.cleanup();
-      process.exit(1);
-    });
-
-    process.on('unhandledRejection', async (reason, promise) => {
-      logger.error('⚠️ Unhandled Rejection at:', promise, 'reason:', reason);
-      await this.cleanup();
-      process.exit(1);
-    });
-  }
-
-  async cleanup() {
-    try {
-      logger.info('🧹 Cleaning up resources...');
-
-      await shutdownWhatsAppClients();
-      logger.info('✅ All WhatsApp clients gracefully shut down.');
-
-      closeWebSocketServer();
-      logger.info('✅ WebSocket server closed.');
-
-      if (this.httpServer) {
-        await new Promise((resolve, reject) => {
-          this.httpServer.close((err) => {
-            if (err) {
-              logger.error('❌ Error closing HTTP server:', err);
-              return reject(err);
+            if (error) {
+                logger.error({ error }, 'Error fetching active WhatsApp sessions from DB on startup.');
+                return;
             }
-            logger.info('✅ HTTP server closed.');
-            resolve();
-          });
-        });
-      }
-    } catch (error) {
-      logger.error('❌ Error during cleanup:', error);
+
+            if (activeSessions && activeSessions.length > 0) {
+                logger.info(`Found ${activeSessions.length} active WhatsApp sessions to re-establish.`);
+                for (const session of activeSessions) {
+                    logger.info(`Re-creating WhatsApp client for user: ${session.user_id}`);
+                    createWhatsAppClient(session.user_id)
+                        .catch(err => logger.error({ err, userId: session.user_id }, `Failed to re-create WhatsApp client`));
+                }
+            } else {
+                logger.info('No active WhatsApp sessions found to re-establish.');
+            }
+        } catch (e) {
+            logger.error({ e }, 'Exception during WhatsApp client setup.');
+        }
     }
-  }
+
+    setupShutdownHandlers() {
+        const shutdownSignals = ['SIGINT', 'SIGTERM', 'SIGQUIT'];
+        shutdownSignals.forEach(signal => {
+            process.on(signal, async () => {
+                logger.warn(`\n🛑 Received ${signal}, initiating graceful shutdown...`);
+                await this.cleanup();
+                process.exit(0);
+            });
+        });
+
+        process.on('uncaughtException', async (err) => {
+            logger.error('⚠️ Uncaught Exception:', err);
+            await this.cleanup();
+            process.exit(1);
+        });
+
+        process.on('unhandledRejection', async (reason, promise) => {
+            logger.error('⚠️ Unhandled Rejection at:', promise, 'reason:', reason);
+            await this.cleanup();
+            process.exit(1);
+        });
+    }
+
+    async cleanup() {
+        try {
+            logger.info('🧹 Cleaning up resources...');
+            await shutdownWhatsAppClients();
+            logger.info('✅ WhatsApp clients shut down.');
+            closeWebSocketServer();
+            logger.info('✅ WebSocket server closed.');
+            if (this.httpServer) {
+                await new Promise((resolve, reject) => {
+                    this.httpServer.close((err) => {
+                        if (err) {
+                            logger.error('❌ Error closing HTTP server:', err);
+                            return reject(err);
+                        }
+                        logger.info('✅ HTTP server closed.');
+                        resolve();
+                    });
+                });
+            }
+        } catch (error) {
+            logger.error('❌ Error during cleanup:', error);
+        }
+    }
 }
 
 new MainServer().start().catch(err => {
-  logger.error('❌ Fatal error during MainServer startup:', err);
-  process.exit(1);
+    logger.error('❌ Fatal error during MainServer startup:', err);
+    process.exit(1);
 });
