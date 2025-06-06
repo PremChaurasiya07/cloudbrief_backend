@@ -176,7 +176,7 @@ import { shutdownWhatsAppClients, createWhatsAppClient } from './lib/whatsappSes
 import { verifySupabaseConnection, supabaseServer } from './lib/supabase.js';
 
 const dev = process.env.NODE_ENV !== 'production';
-const HTTP_PORT = process.env.PORT || 3000;
+const HTTP_PORT = process.env.PORT || 8080;
 const WS_PORT = process.env.WS_PORT || 8081;
 
 const logger = pino({ level: 'info' }).child({ module: 'MAIN-SERVER' });
