@@ -50,7 +50,7 @@
 
 
 import { supabase } from "../../../../../../../lib/supabase";
-import { decryptMessage } from ".../../../lib/data_security"; // adjust path as needed
+import { decryptMessage } from "../../../../../../../lib/data_security"; // adjust path as needed
 
 export async function POST(req) {
   const { userid, chat_id } = await req.json();
